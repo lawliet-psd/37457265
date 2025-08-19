@@ -34,21 +34,40 @@ jobs:
       - name: API'den M3U Listesini Al
         run: python Pythonlar/kablo.py  
 
-      - name: M3U Güncellemelerini Yap
+      - name: kbltv klasörünü güncelle
         run: |
-          
-          python Pythonlar/vettel.py
+          set -e
+          mkdir -p kbltv
+          copy_file() {
+            local src="$1"
+            local dest="$2"
+            if [ -f "$src" ]; then
+              cp -f "$src" "$dest"
+              echo "Kopyalandı: $src -> $dest"
+            elif [ -f "Pythonlar/$src" ]; then
+              cp -f "Pythonlar/$src" "$dest"
+              echo "Kopyalandı: Pythonlar/$src -> $dest"
+            else
+              echo "Uyarı: Kaynak bulunamadı: $src"
+            fi
+          }
+          copy_file "kablo_çocuk_eğitim.m3u" "kbltv/cocuk.m3u"
+          copy_file "kablo_ulusal.m3u" "kbltv/ulusal.m3u"
+          copy_file "kablo_ulusal_haber.m3u" "kbltv/haber.m3u"
+          copy_file "kablo_spor.m3u" "kbltv/spor.m3u"
+          copy_file "kablo_belgesel.m3u" "kbltv/belgesel.m3u"
+          copy_file "kablo_sinema_ve_dizi.m3u" "kbltv/sinema.m3u"
 
       - name: Değişiklik Kontrolü
         id: degisiklik_kontrol
         run: |
-          git diff --quiet . || echo "degisiklik=true" >> $GITHUB_OUTPUT
+          git diff --quiet kbltv || echo "degisiklik=true" >> $GITHUB_OUTPUT
 
       - name: Değişiklikleri Commit Et
         if: steps.degisiklik_kontrol.outputs.degisiklik == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "📡 Kablo ve M3U güncellemesi yapıldı" -m "🕒 Otomatik işlem - $GITHUB_SHA"
+          git add kbltv/cocuk.m3u kbltv/ulusal.m3u kbltv/haber.m3u kbltv/spor.m3u kbltv/belgesel.m3u kbltv/sinema.m3u
+          git commit -m "📦 kbltv M3U güncellemesi" -m "🕒 Otomatik işlem - $GITHUB_SHA"
           git push

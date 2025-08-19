@@ -3,6 +3,18 @@ import json
 import gzip
 from io import BytesIO
 
+
+def _slugify_category(name: str) -> str:
+    """Kategori adını dosya adına uygun bir slug'a çevirir."""
+    if not name:
+        return "genel"
+    # Alfasayısal dışındaki karakterleri alt çizgi yap, art arda gelenleri tekilleştir
+    temp = "".join(ch if ch.isalnum() else "_" for ch in name)
+    # Baştaki/sondaki ve tekrar eden alt çizgileri sadeleştir
+    parts = [p for p in temp.strip("_").split("_") if p]
+    slug = "_".join(parts).lower()
+    return slug or "genel"
+
 def get_canli_tv_m3u():
     """"""
     
@@ -37,37 +49,63 @@ def get_canli_tv_m3u():
         
         channels = data['Data']['AllChannels']
         print(f"✅ {len(channels)} kanal bulundu")
-        
-        with open("kablo.m3u", "w", encoding="utf-8") as f:
-            f.write("#EXTM3U\n")
-            
-            kanal_sayisi = 0
-            kanal_index = 1  
-            
-            for channel in channels:
-                name = channel.get('Name')
-                stream_data = channel.get('StreamData', {})
-                hls_url = stream_data.get('HlsStreamUrl') if stream_data else None
-                logo = channel.get('PrimaryLogoImageUrl', '')
-                categories = channel.get('Categories', [])
-                
-                if not name or not hls_url:
-                    continue
-                
-                group = categories[0].get('Name', 'Genel') if categories else 'Genel'
-                
-                if group == "Bilgilendirme":
-                    continue
 
-                tvg_id = str(kanal_index)
+        # Kanalları kategorilere göre grupla
+        kategori_kanallar = {}
+        tum_kanallar = []
+        kanal_sayisi = 0
+        kanal_index = 1
 
-                f.write(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{group}",{name}\n')
-                f.write(f'{hls_url}\n')
+        for channel in channels:
+            name = channel.get('Name')
+            stream_data = channel.get('StreamData', {})
+            hls_url = stream_data.get('HlsStreamUrl') if stream_data else None
+            logo = channel.get('PrimaryLogoImageUrl', '')
+            categories = channel.get('Categories', [])
 
-                kanal_sayisi += 1
-                kanal_index += 1  
-        
-        print(f"📺 kablo.m3u dosyası oluşturuldu! ({kanal_sayisi} kanal)")
+            if not name or not hls_url:
+                continue
+
+            group = categories[0].get('Name', 'Genel') if categories else 'Genel'
+            if group == "Bilgilendirme":
+                continue
+
+            tvg_id = str(kanal_index)
+            kanal_kaydi = {
+                'tvg_id': tvg_id,
+                'logo': logo or '',
+                'group': group,
+                'name': name,
+                'url': hls_url
+            }
+
+            tum_kanallar.append(kanal_kaydi)
+            kategori_kanallar.setdefault(group, []).append(kanal_kaydi)
+
+            kanal_sayisi += 1
+            kanal_index += 1
+
+        # Tüm kanalların birleşik dosyası (geriye dönük uyumluluk)
+        with open("kablo.m3u", "w", encoding="utf-8") as f_all:
+            f_all.write("#EXTM3U\n")
+            for k in tum_kanallar:
+                f_all.write(f'#EXTINF:-1 tvg-id="{k["tvg_id"]}" tvg-logo="{k["logo"]}" group-title="{k["group"]}",{k["name"]}\n')
+                f_all.write(f'{k["url"]}\n')
+
+        # Her kategori için ayrı dosya
+        kategori_dosya_sayisi = 0
+        for group, kayitlar in kategori_kanallar.items():
+            slug = _slugify_category(group)
+            dosya_adi = f"kablo_{slug}.m3u"
+            with open(dosya_adi, "w", encoding="utf-8") as f_cat:
+                f_cat.write("#EXTM3U\n")
+                for k in kayitlar:
+                    f_cat.write(f'#EXTINF:-1 tvg-id="{k["tvg_id"]}" tvg-logo="{k["logo"]}" group-title="{k["group"]}",{k["name"]}\n')
+                    f_cat.write(f'{k["url"]}\n')
+            kategori_dosya_sayisi += 1
+
+        print(f"📁 {kategori_dosya_sayisi} kategori için ayrı M3U oluşturuldu")
+        print(f"📺 kablo.m3u (toplam {kanal_sayisi} kanal) güncellendi")
         return True
         
     except Exception as e:
